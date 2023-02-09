@@ -35,7 +35,7 @@ export enum BrokerErrors {
 //     createBroker(withSqsTransport(sqsTransport))
 //     createBroker(withSnsSender(snsSender), withSqsReceiver(sqsTransport))
 //     createBroker(withMemoryTransport())
-//     createBroker(withManyPublishers(sqsTransport, snsSender), withManyReceiver(sqsTransport1, sqsTransport2))
+//     createBroker(withManyPublishers(sqsTransport, snsSender), withManyReceivers(sqsTransport1, sqsTransport2))
 //     createBroker(withMemoryTransport(), withMiddleware())
 export const createBroker = (...confFuncs: BrokerConfFunc[]): Broker => {
   let started = false
