@@ -14,10 +14,12 @@ import { BrokerConf, BrokerConfFunc } from '../../broker/broker'
 import { Handler } from '../../messages/handler'
 import { awsChunk } from '../../chunk/aws-chunk'
 import { Transport } from '../transport'
+import { defaultTranslation, Translator } from '../translation'
 
 export type SQSTransportProps = {
   client: SQSClient
   queue: string
+  translation?: Translator
   pollFrequencyMs?: number
 }
 
@@ -30,6 +32,7 @@ export enum SQSAdapterErrors {
 export const createSQSTransport = ({
   client,
   queue,
+  translation = defaultTranslation,
   pollFrequencyMs = 100,
 }: SQSTransportProps): SQSTransport => {
   const handlers: Set<Handler<Message>> = new Set()
@@ -135,7 +138,7 @@ export const createSQSTransport = ({
           try {
             await Promise.all(
               Array.from(handlers).map(async (handler) =>
-                handler.handle(JSON.parse(m.Body!) as Message)
+                handler.handle(translation(JSON.parse(m.Body!)))
               )
             )
           } catch (err) {
