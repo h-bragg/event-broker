@@ -5,7 +5,10 @@ import {
   ReceiveMessageCommand,
   SendMessageBatchCommand,
   SendMessageCommand,
+  Message as SqsMessage,
   SQSClient,
+  ChangeMessageVisibilityBatchCommand,
+  DeleteMessageBatchCommand,
 } from '@aws-sdk/client-sqs'
 import { Message } from '../../messages/message'
 import { Managed } from '../managed'
@@ -14,12 +17,13 @@ import { BrokerConf, BrokerConfFunc } from '../../broker/broker'
 import { Handler } from '../../messages/handler'
 import { awsChunk } from '../../chunk/aws-chunk'
 import { Transport } from '../transport'
-import { defaultTranslation, Translator } from '../translation'
+
+export type Translator = (message: SqsMessage) => Message
 
 export type SQSTransportProps = {
   client: SQSClient
   queue: string
-  translation?: Translator
+  translate?: Translator
   pollFrequencyMs?: number
 }
 
@@ -29,10 +33,13 @@ export enum SQSAdapterErrors {
   UnknownQueue = 'queue could not be found',
 }
 
+export const defaultTranslation: Translator = (message: SqsMessage): Message =>
+  JSON.parse(message.Body || '{}') as Message
+
 export const createSQSTransport = ({
   client,
   queue,
-  translation = defaultTranslation,
+  translate = defaultTranslation,
   pollFrequencyMs = 100,
 }: SQSTransportProps): SQSTransport => {
   const handlers: Set<Handler<Message>> = new Set()
@@ -133,26 +140,54 @@ export const createSQSTransport = ({
     const response = await client.send(command)
 
     if (response.Messages && response.Messages.length > 0) {
-      await Promise.all(
-        response.Messages.map(async (m) => {
+      const results = await Promise.all(
+        response.Messages.map(async (sqsMessage: SqsMessage) => {
           try {
+            const message = translate(sqsMessage)
             await Promise.all(
               Array.from(handlers).map(async (handler) =>
-                handler.handle(translation(JSON.parse(m.Body!)))
+                handler.handle(message)
               )
             )
+            return { success: sqsMessage.ReceiptHandle }
           } catch (err) {
-            if (m.ReceiptHandle) {
-              const visibilyCommand = new ChangeMessageVisibilityCommand({
-                QueueUrl,
-                ReceiptHandle: m.ReceiptHandle,
-                VisibilityTimeout: 0,
-              })
-              await client.send(visibilyCommand)
-            }
+            return { error: sqsMessage.ReceiptHandle }
           }
         })
       )
+
+      const deleteSuccessful = async (handles: string[]) => {
+        if (handles.length > 0) {
+          const deleteCommand = new DeleteMessageBatchCommand({
+            QueueUrl,
+            Entries: handles.map((ReceiptHandle) => ({
+              Id: crypto.randomUUID(),
+              ReceiptHandle,
+            })),
+          })
+          return client.send(deleteCommand)
+        }
+      }
+
+      const requeueFailed = async (handles: string[]) => {
+        if (handles.length > 0) {
+          const visibilyCommand = new ChangeMessageVisibilityBatchCommand({
+            QueueUrl,
+            Entries: handles.map((ReceiptHandle) => ({
+              Id: crypto.randomUUID(),
+              ReceiptHandle,
+            })),
+          })
+          await client.send(visibilyCommand)
+        }
+      }
+
+      await Promise.all([
+        deleteSuccessful(
+          results.filter((r) => r.success!!).map((r) => r.success!)
+        ),
+        requeueFailed(results.filter((r) => r.error!!).map((r) => r.error!)),
+      ])
     }
   }
 

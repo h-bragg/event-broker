@@ -26,6 +26,17 @@ export enum BrokerErrors {
   NoReceiverTransportConfigured = 'broker: no receiver transport configured',
 }
 
+// createBroker instance of a Broker
+//
+// this takes in a set of configuration functions that define the broker:
+//
+// examples:
+//
+//     createBroker(withSqsTransport(sqsTransport))
+//     createBroker(withSnsSender(snsSender), withSqsReceiver(sqsTransport))
+//     createBroker(withMemoryTransport())
+//     createBroker(withManyPublishers(sqsTransport, snsSender), withManyReceiver(sqsTransport1, sqsTransport2))
+//     createBroker(withMemoryTransport(), withMiddleware())
 export const createBroker = (...confFuncs: BrokerConfFunc[]): Broker => {
   let started = false
   const handlers: Set<Handler<Message>> = new Set()
