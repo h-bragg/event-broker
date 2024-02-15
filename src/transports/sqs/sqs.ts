@@ -205,7 +205,7 @@ const stringAttr = (val: string): MessageAttributeValue => ({
   DataType: 'String',
 })
 
-export const withSqsSender =
+export const withSqsPublisher =
   (adapter: SQSTransport): BrokerConfFunc =>
   (conf: BrokerConf): BrokerConf => ({
     ...conf,
@@ -223,4 +223,4 @@ export const withSqsReceiver =
 export const withSqsTransport =
   (adapter: SQSTransport): BrokerConfFunc =>
   (conf: BrokerConf): BrokerConf =>
-    withSqsSender(adapter)(withSqsReceiver(adapter)(conf))
+    withSqsPublisher(adapter)(withSqsReceiver(adapter)(conf))
